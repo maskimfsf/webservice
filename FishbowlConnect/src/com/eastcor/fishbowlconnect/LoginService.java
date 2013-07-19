@@ -5,9 +5,6 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.UUID;
 
 import javax.ws.rs.Consumes;
@@ -21,16 +18,16 @@ import org.jasypt.encryption.pbe.StandardPBEStringEncryptor;
 @Path("/login")
 public class LoginService {
 
-	public static final String password = "wux5kAy5";
+	public static final String password = "wux5kAy5"; // randomly generated
+	public static final long timeout = 2700000L; // in milliseconds. set to 45 minutes.
 
 	@POST
-	@Consumes("application/x-www-form-urlencoded")
-	@Produces("application/json")
+	@Consumes("application/json")
+	@Produces("application/xml")
 	public String login(@FormParam("user") String user,
 			@FormParam("pass") String pass) throws ClassNotFoundException {
-		System.out.println("invoked: " + user + " " + pass);
-		boolean success = false;
-		String token = "";
+		System.out.println(user + " is trying to login.");
+		String token = "", errorMsg = "";
 		Connection conn;
 		try {
 			Class.forName("org.firebirdsql.jdbc.FBDriver");
@@ -38,37 +35,31 @@ public class LoginService {
 			conn = DriverManager.getConnection(
 					"jdbc:firebirdsql:localhost/3050:c:/eastcor.fdb", "gone",
 					"fishing");
+			conn.setAutoCommit(false);
 			PreparedStatement ps = conn
 					.prepareStatement("select 'true' from sysuser where username = ? and userpwd = ?");
 			ps.setString(1, user);
-			ps.setString(2, pass);
+			ps.setString(2, pass.trim());
 			ResultSet rs = ps.executeQuery();
-			success = rs.next();
-			System.out.println(user + " " + pass + " " + success);
-			if (success) {
+			if (rs.next()) {
 				PreparedStatement insertKey = conn.prepareStatement("insert into androidtokens (token) values(?)");
-				DateFormat df = new SimpleDateFormat("MM-dd-yyyy-HH-mm-ss");
-				Date d = new Date();
 				String key = UUID.randomUUID().toString().toUpperCase() + "|"
 						+ "com.eastcor.purchaseorder" + "|" + user + "|"
-						+ df.format(d);
-				System.out.println(key);
+						+ System.currentTimeMillis();
 				StandardPBEStringEncryptor jasypt = new StandardPBEStringEncryptor();
 				jasypt.setPassword(password);
 				token = jasypt.encrypt(key);
-				System.out.println(token);
 				insertKey.setString(1, token);
 				insertKey.execute();
-				System.out.println(jasypt.decrypt(token));
 				conn.commit();
 				conn.close();
+				System.out.println("Token created. Login successful.");
 			}
 		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			errorMsg = e.getMessage();
 		} 
 		return "<?xml version=\"1.0\" encoding=\"utf-8\" ?><token>" + token
-				+ "</token>";
+				+ "</token>\n<error>"+errorMsg+"</error>";
 
 	}
 
