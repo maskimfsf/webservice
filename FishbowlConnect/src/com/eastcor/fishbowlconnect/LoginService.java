@@ -42,7 +42,7 @@ public class LoginService {
 			ps.setString(2, pass.trim());
 			ResultSet rs = ps.executeQuery();
 			if (rs.next()) {
-				PreparedStatement insertKey = conn.prepareStatement("insert into androidtokens (token) values(?)");
+				PreparedStatement insertKey = conn.prepareStatement("insert into androidtokens (token, dateadded) values(?, current_timestamp)");
 				String key = UUID.randomUUID().toString().toUpperCase() + "|"
 						+ "com.eastcor.purchaseorder" + "|" + user + "|"
 						+ System.currentTimeMillis();

@@ -45,7 +45,7 @@ public class PurchaseOrderService {
 					"jdbc:firebirdsql:localhost/3050:c:/eastcor.fdb", "gone",
 					"fishing");
 			conn.setAutoCommit(true);
-			String updateQuery = "update customset set info = ? where recordid = (select id from po where num = ?)";
+			String updateQuery = "update customset set info = ? where recordid = (select id from po where num = ?) and customfieldid = 24";
 			String insertToCustomVarcharLong = "insert into customvarcharlong (id, customfieldid, info, recordid) values (gen_id(GENCUSTOMVARCHARLONGID, 1), 23, ?, (select id from po where num = ?))";
 			String insertToCustomInteger = "insert into custominteger (id, customfieldid, info, recordid) values (gen_id(GENCUSTOMINTEGERID, 1), 22, 1, (select id from po where num = ?))";
 			String insertToCustomTimestamp = "insert into customtimestamp (id, customfieldid, info, recordid) values (gen_id(GENCUSTOMTIMESTAMPID, 1), 28, current_timestamp, (select id from po where num = ?))";
@@ -144,6 +144,8 @@ public class PurchaseOrderService {
 				+ "where customset.info = \'Waiting for Approval\' "
 				+ "order by num";
 		String items = "select description, totalcost from poitem where poid = ?";
+		String memos = "select datecreated, memo, username from memo where recordid = ?";
+		String getRequestedBy = "select info from customset where customfieldid = 27 and recordid = ?";
 		ResultSet rs;
 		try {
 			Class.forName("org.firebirdsql.jdbc.FBDriver");
@@ -163,8 +165,6 @@ public class PurchaseOrderService {
 			rs = statement.executeQuery(getReportInfo);
 
 			while (rs.next()) {
-				// really really ugly, but need to check for null before sending
-				// to XML.escape
 				xml += "\n\n\t<purchaseorder>\n";
 				int id = rs.getInt("po.id");
 				xml += "\t\t<ponum>" + rs.getInt("num") + "</ponum>\n";
@@ -208,10 +208,17 @@ public class PurchaseOrderService {
 				xml += "\t\t<carrier>"
 						+ XML.escape(checkNull(rs.getString("carrier.name")))
 						+ "</carrier>\n";
-				xml += "\t\t<paymentterms>"
-						+ XML.escape(checkNull(rs
-								.getString("paymentterms.name")))
-						+ "</paymentterms>\n";
+//				xml += "\t\t<paymentterms>"
+//						+ XML.escape(checkNull(rs
+//								.getString("paymentterms.name")))
+//						+ "</paymentterms>\n";
+				PreparedStatement getRequestedByStatement = conn.prepareStatement(getRequestedBy);
+				getRequestedByStatement.setInt(1, id);
+				ResultSet requestedByResultSet = getRequestedByStatement.executeQuery();
+				String requestedBy = requestedByResultSet.next() ? requestedByResultSet.getString(1) : "No user on file.";
+				xml += "\t\t<requestedby>"
+						+ XML.escape(requestedBy) +"</requestedby>\n";
+
 				xml += "\t\t<fob>"
 						+ XML.escape(checkNull(rs.getString("fobpoint.name")))
 						+ "</fob>\n";
@@ -224,10 +231,10 @@ public class PurchaseOrderService {
 				try {
 					while (partList.next()) {
 						xml += "\t\t\t<part>\n";
-						xml += "\t\t\t\t<desc>"
+						xml += "\t\t\t\t<partdesc>"
 								+ XML.escape(checkNull(partList
 										.getString("description")))
-								+ "</desc>\n";
+								+ "</partdesc>\n";
 						xml += "\t\t\t\t<cost>"
 								+ XML.escape(checkNull(partList
 										.getString("totalcost"))) + "</cost>\n";
@@ -238,18 +245,31 @@ public class PurchaseOrderService {
 				} finally {
 					partList.close();
 				}
-
-				xml += "\t\t</partlist>\n\t</purchaseorder>";
+				xml += "\t\t</partlist>\n\t\t<memolist>\n";
+				PreparedStatement getMemoList = conn.prepareStatement(memos);
+				getMemoList.setInt(1, id);
+				ResultSet memoList = getMemoList.executeQuery();
+				try {
+					while (memoList.next()) {
+						xml += "\t\t\t<memo>\n";
+						xml += "\t\t\t\t<memodesc>" + XML.escape(checkNull(memoList.getString("memo"))) + "</memodesc>\n";
+						xml += "\t\t\t\t<date>" + XML.escape(checkNull(memoList.getDate("datecreated").toString())) + "</date>\n";
+						xml += "\t\t\t\t<user>" + XML.escape(checkNull(memoList.getString("username"))) + "</user>\n\t\t\t</memo>\n";
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				} finally {
+					memoList.close();
+				}
+				xml += "\t\t</memolist>\n\t</purchaseorder>";
 			}
 			rs.close();
 			conn.close();
 			xml += "\n</polist>";
-
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
 		return xml;
 
 	}
